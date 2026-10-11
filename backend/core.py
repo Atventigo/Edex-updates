@@ -118,6 +118,9 @@ def build_draft_prompt(lead, reason, context=None) -> str:
         "- Maximum 160 characters INCLUDING the opt-out line.",
         f"- Start with the first name, name the sender ({sender}), and end with: {OPT_OUT}",
         "- Do not invent prices, sales or facts that are not given above.",
+        "- The reason and stage are internal notes. Never quote them or use CRM words "
+        "like lead, pipeline, stage, score, priority or 'never contacted'. Write what a "
+        "person would actually text, e.g. mention the nearby sale, not that they are a lead.",
         "",
         "Also write a one-line talking point the agent can use to open a phone call.",
         "",

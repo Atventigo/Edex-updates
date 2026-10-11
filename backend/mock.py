@@ -45,8 +45,8 @@ def draft(req: DraftReq):
     agent = req.context.get("agentName") if isinstance(req.context, dict) else None
     agent = agent or "Sam"
     text = (
-        f"Hi {name}, it's {agent}. Quick note on {suburb}: {req.reason or 'checking in'}. "
-        "Happy to chat if useful."
+        f"Hi {name}, it's {agent} from Ray White. There's been some movement in {suburb} lately. "
+        "Happy to share what it means for you."
     )
     return {
         "sms": core.enforce_sms_constraints(text),
