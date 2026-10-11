@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Follow-up Assistant settings</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #1d1d1f; }
+    label { display: block; margin-top: 14px; font-weight: 600; }
+    .hint { font-weight: 400; color: #6e6e73; font-size: 12px; }
+    input, select, textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 6px 8px; margin-top: 4px; }
+    textarea { min-height: 70px; font-family: ui-monospace, monospace; font-size: 12px; }
+    button { font: inherit; padding: 7px 14px; margin: 16px 8px 0 0; }
+    pre { background: #f5f5f7; padding: 12px; overflow: auto; max-height: 400px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Follow-up Assistant</h1>
+
+  <label>Mode
+    <select id="mode">
+      <option value="off">Off: nothing leaves the browser</option>
+      <option value="discovery">Discovery: record endpoint structure only, no data</option>
+      <option value="capture">Capture: send NurtureCloud data to the backend and show suggestions</option>
+    </select>
+  </label>
+  <label>Backend URL <span class="hint">n8n webhook base, e.g. https://n8n.example.com/webhook/nc</span>
+    <input id="backendUrl" type="url"></label>
+  <label>Backend key <span class="hint">sent as X-Extension-Key</span>
+    <input id="backendKey" type="password"></label>
+  <label>Capture URL patterns <span class="hint">one regex per line; empty = all JSON responses</span>
+    <textarea id="captureUrlPatterns"></textarea></label>
+  <label>Ignore URL patterns <span class="hint">one regex per line</span>
+    <textarea id="ignoreUrlPatterns"></textarea></label>
+  <label>Contact URL pattern <span class="hint">regex; first group is the contact id</span>
+    <input id="contactUrlPattern"></label>
+  <label>SMS box selectors <span class="hint">one CSS selector per line, first visible match wins</span>
+    <textarea id="smsBoxSelectors"></textarea></label>
+  <label>Sender phrases every SMS must contain <span class="hint">one per line</span>
+    <textarea id="requiredSmsPhrases"></textarea></label>
+  <button id="save">Save</button><span id="saved"></span>
+
+  <h2>Discovered endpoints</h2>
+  <p class="hint">Structure only: paths with ids replaced, key names and types. Safe to copy into nurturecloud_endpoints.md.</p>
+  <button id="refresh">Refresh</button><button id="export">Download JSON</button><button id="clear">Clear</button>
+  <pre id="endpoints"></pre>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
