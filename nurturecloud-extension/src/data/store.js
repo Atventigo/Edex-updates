@@ -91,3 +91,17 @@ export const setMeta = (key, val) =>
   withStore("meta", "readwrite", (s) => {
     s.put({ key, value: val });
   }, undefined);
+
+// Delete the whole database. Closes the cached connection first, otherwise the
+// delete is blocked and later calls would reuse a dead handle.
+export async function clearAll() {
+  const db = dbPromise ? await dbPromise : null;
+  db?.close();
+  dbPromise = null;
+  const idb = globalThis.indexedDB;
+  if (!idb) return;
+  await new Promise((resolve) => {
+    const req = idb.deleteDatabase("fua");
+    req.onsuccess = req.onerror = req.onblocked = () => resolve();
+  });
+}

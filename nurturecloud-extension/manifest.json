@@ -4,23 +4,52 @@
   "version": "0.1.0",
   "description": "Captures the data NurtureCloud already loads, shows who to follow up with, and drafts SMS for the agent to review and send.",
   "minimum_chrome_version": "111",
-  "permissions": ["storage"],
-  "host_permissions": ["https://*.nurturecloud.com/*"],
-  "optional_host_permissions": ["https://*/*", "http://localhost/*"],
-  "background": { "service_worker": "src/background.js", "type": "module" },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.nurturecloud.com/*",
+    "https://*.nurturecloud.com.au/*",
+    "https://nurturecloud.raywhite.com/*",
+    "https://*.nurturecloud.raywhite.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
-      "matches": ["https://*.nurturecloud.com/*"],
-      "js": ["src/page-hook.js"],
+      "matches": [
+        "https://*.nurturecloud.com/*",
+        "https://*.nurturecloud.com.au/*",
+        "https://nurturecloud.raywhite.com/*",
+        "https://*.nurturecloud.raywhite.com/*"
+      ],
+      "js": [
+        "src/page-hook.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://*.nurturecloud.com/*"],
-      "js": ["src/content.js"],
+      "matches": [
+        "https://*.nurturecloud.com/*",
+        "https://*.nurturecloud.com.au/*",
+        "https://nurturecloud.raywhite.com/*",
+        "https://*.nurturecloud.raywhite.com/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "options_page": "src/options.html",
-  "action": { "default_title": "Follow-up Assistant" }
+  "action": {
+    "default_title": "Follow-up Assistant"
+  }
 }

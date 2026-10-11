@@ -5,6 +5,7 @@ import * as store from "./data/store.js";
 import { runBackfill, isSet } from "./data/backfill.js";
 import { runDelta } from "./data/sync.js";
 import { suggest, buildCallList } from "./brain.js";
+import { demoData } from "./demo.js";
 
 async function getConfig() {
   const stored = await chrome.storage.local.get("config");
@@ -152,6 +153,19 @@ async function handle(msg, sender) {
       // was sent. The real send shows up later in NurtureCloud's own history.
       await store.setMeta(`drafted:${msg.contactId}`, new Date().toISOString());
       return;
+
+    case "loadDemo": {
+      const { leads, messages, vault } = demoData();
+      await store.upsertLeads(leads);
+      await store.upsertMessages(messages);
+      await store.setMeta(vault.key, vault.value);
+      return { ok: true, leads: leads.length };
+    }
+
+    case "clearData":
+      // Wipes the local store (leads, messages, scores, sync cursors).
+      await store.clearAll();
+      return { ok: true };
 
     case "checkDraft":
       return checkDraft(msg.text, config);

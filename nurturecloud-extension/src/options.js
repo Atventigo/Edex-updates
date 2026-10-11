@@ -42,6 +42,14 @@ async function showEndpoints() {
 }
 
 $("save").addEventListener("click", save);
+$("loadDemo").addEventListener("click", async () => {
+  const res = await chrome.runtime.sendMessage({ type: "loadDemo" });
+  $("dataStatus").textContent = res?.ok ? ` Loaded ${res.leads} demo leads.` : ` Failed: ${res?.error || "unknown error"}`;
+});
+$("clearData").addEventListener("click", async () => {
+  const res = await chrome.runtime.sendMessage({ type: "clearData" });
+  $("dataStatus").textContent = res?.ok ? " All local lead data cleared." : ` Failed: ${res?.error || "unknown error"}`;
+});
 $("refresh").addEventListener("click", showEndpoints);
 $("clear").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "clearEndpoints" });
