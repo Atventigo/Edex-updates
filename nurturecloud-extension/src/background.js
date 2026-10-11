@@ -4,7 +4,7 @@ import { checkDraft } from "./sms.js";
 import * as store from "./data/store.js";
 import { runBackfill, isSet } from "./data/backfill.js";
 import { runDelta } from "./data/sync.js";
-import { scoreLead, rankLeads, dailyCallList } from "./scoring/score.js";
+import { suggest, buildCallList } from "./brain.js";
 
 async function getConfig() {
   const stored = await chrome.storage.local.get("config");
@@ -55,23 +55,6 @@ async function backend(path, payload, config) {
   return text ? JSON.parse(text) : {};
 }
 
-// VaultRE events are cached per suburb so bulk ranking doesn't hammer the backend.
-const VAULT_TTL_MS = 6 * 60 * 60 * 1000;
-async function vaultEventsFor(lead, config) {
-  if (!lead?.suburb) return [];
-  const key = `vault:${lead.suburb.toLowerCase()}`;
-  const cached = await store.getMeta(key);
-  if (cached && Date.now() - cached.at < VAULT_TTL_MS) return cached.events;
-  try {
-    const { events } = await backend("/vault-events", { suburb: lead.suburb, street: lead.street, contactAddress: lead.address }, config);
-    await store.setMeta(key, { at: Date.now(), events: events || [] });
-    return events || [];
-  } catch (e) {
-    console.warn("[fua] vault-events failed:", e.message);
-    return cached?.events || [];
-  }
-}
-
 // --- Authenticated NurtureCloud fetch, executed in the page's tab -------------
 // Data lives in the extension origin; only the fetch runs where the agent's
 // NurtureCloud session (cookies + bearer token) is available.
@@ -98,68 +81,6 @@ async function requireEndpoints(config) {
   const ep = config.endpoints;
   if (!isSet(ep?.leads?.url)) throw new Error("NurtureCloud endpoints not configured yet (missing leads.url). Fill them from the discovery/HAR session in the extension options.");
   return ep;
-}
-
-// --- Suggestion for one open contact -----------------------------------------
-function lastContactSummary(lead, messages) {
-  if (!lead?.lastContactedAt) return "No prior contact on record.";
-  const when = new Date(lead.lastContactedAt).toLocaleDateString();
-  const replied = lead.lastInboundAt && lead.lastInboundAt > lead.lastContactedAt;
-  const recent = (messages || []).slice(-1)[0];
-  const tail = recent?.bodyPreview ? ` Last message: "${recent.bodyPreview}".` : "";
-  return `Last contacted ${when} by ${lead.lastContactChannel || "unknown"}.${replied ? " They have since replied and are awaiting a response." : ""}${tail}`;
-}
-
-async function suggest(contactId, config) {
-  const lead = await store.getLead(contactId);
-  if (!lead) return { ok: false, error: "This contact hasn't been synced yet. Run a backfill or open them after a sync." };
-  const messages = await store.getMessages(contactId);
-  const events = await vaultEventsFor(lead, config);
-  const score = scoreLead(lead, messages, events, new Date());
-  await store.saveScores([score]);
-
-  let sms = "";
-  let talkingPoint = "";
-  try {
-    const draft = await backend("/draft", {
-      lead: { firstName: lead.firstName, suburb: lead.suburb, stage: lead.stage, lastContactSummary: lastContactSummary(lead, messages) },
-      reason: score.reasons.join(" "),
-      context: { agentName: config.agentName, suggestedChannel: score.suggestedChannel }
-    }, config);
-    sms = draft.sms || "";
-    talkingPoint = draft.talkingPoint || "";
-  } catch (e) {
-    talkingPoint = `(Draft unavailable: ${e.message})`;
-  }
-
-  return {
-    ok: true,
-    suggestion: {
-      contactName: lead.name || lead.firstName || contactId,
-      lastContacted: lead.lastContactedAt ? lastContactSummary(lead, messages) : "No contact on record",
-      nextAction: `${score.bucket.replace("_", " ")} · ${score.suggestedChannel}`,
-      talkingPoint: talkingPoint || score.reasons[0] || "",
-      smsDraft: sms,
-      reason: score.reasons.join(" · "),
-      priority: score.priority
-    }
-  };
-}
-
-// --- Daily call list: score everyone, rank, take the top --------------------
-async function buildCallList(config) {
-  const leads = await store.allLeads();
-  if (!leads.length) return { ok: true, leads: [], note: "No leads synced yet." };
-  const now = new Date();
-  const scored = [];
-  for (const lead of leads) {
-    const messages = await store.getMessages(lead.id);
-    const cached = await store.getMeta(`vault:${(lead.suburb || "").toLowerCase()}`);
-    scored.push({ ...scoreLead(lead, messages, cached?.events || [], now), name: lead.name || lead.firstName || lead.id });
-  }
-  await store.saveScores(scored);
-  const top = dailyCallList(rankLeads(scored), config.callListLimit);
-  return { ok: true, leads: top, total: leads.length };
 }
 
 // --- Message router ----------------------------------------------------------
@@ -214,14 +135,14 @@ async function handle(msg, sender) {
 
     case "suggest":
       try {
-        return await suggest(msg.contactId, config);
+        return await suggest(msg.contactId, { store, config, backend: config.backendUrl ? (path, body) => backend(path, body, config) : null });
       } catch (e) {
         return { ok: false, error: e.message };
       }
 
     case "callList":
       try {
-        return await buildCallList(config);
+        return await buildCallList({ store, config });
       } catch (e) {
         return { ok: false, error: e.message };
       }
