@@ -4,10 +4,35 @@
 (() => {
   const TAG = "fua-capture";
 
+  const AUTH_TAG = "fua-auth";
+  // The bearer token NurtureCloud's own requests carry, captured from the page
+  // hook so the backfill can authenticate exactly as the app does. Cookies ride
+  // along automatically via credentials:"include".
+  let latestAuth = {};
+
   window.addEventListener("message", (event) => {
-    if (event.source !== window || event.data?.tag !== TAG) return;
-    const { url, method, status, body } = event.data;
-    chrome.runtime.sendMessage({ type: "capture", url, method, status, body }).catch(() => {});
+    if (event.source !== window) return;
+    if (event.data?.tag === TAG) {
+      const { url, method, status, body } = event.data;
+      chrome.runtime.sendMessage({ type: "capture", url, method, status, body }).catch(() => {});
+    } else if (event.data?.tag === AUTH_TAG && event.data.authorization) {
+      latestAuth = { Authorization: event.data.authorization };
+    }
+  });
+
+  // The service worker drives the backfill/sync but has no NurtureCloud session,
+  // so it asks this content script (which runs in the page) to make each call.
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "authedFetch") {
+      fetch(msg.url, { credentials: "include", headers: msg.headers || {} })
+        .then(async (r) => sendResponse({ ok: r.ok, status: r.status, body: r.ok ? await r.json().catch(() => null) : null }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true;
+    }
+    if (msg?.type === "getAuth") {
+      sendResponse(latestAuth);
+      return true;
+    }
   });
 
   let config;
@@ -75,11 +100,25 @@
         button.primary { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
         .muted { color: #6e6e73; }
         .status { margin-top: 8px; font-size: 12px; }
+        .calls { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+        .call { display: flex; align-items: baseline; gap: 8px; padding: 7px 8px; border: 1px solid #e3e3e8;
+          border-radius: 8px; cursor: default; }
+        .call .pri { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 26px; text-align: right; }
+        .call .who { flex: 1; min-width: 0; }
+        .call .who b { display: block; }
+        .call .why { color: #6e6e73; font-size: 12px; }
+        .chip { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+          padding: 1px 6px; border-radius: 999px; background: #eef; color: #334; }
       </style>
       <div class="panel">
         <header><span>Follow-up</span><span class="muted" id="mode"></span></header>
         <div class="body">
-          <div id="empty" class="muted">Open a contact to see a suggestion.</div>
+          <div id="empty">
+            <div class="row"><button class="primary" id="loadCalls">Today's calls</button></div>
+            <div class="row"><button id="backfill">Backfill all</button><button id="sync">Sync now</button></div>
+            <div class="calls" id="calls"></div>
+            <div class="status muted" id="callStatus">Open a contact for a suggestion, or load today's call list.</div>
+          </div>
           <div id="content" hidden>
             <div class="label">Contact</div><div class="value" id="name"></div>
             <div class="label">Last contacted</div><div class="value" id="last"></div>
@@ -102,6 +141,61 @@
     $("draft").addEventListener("input", () => showWarnings($("draft").value));
     $("regen").addEventListener("click", () => refresh(true));
     $("fill").addEventListener("click", fillSmsBox);
+    $("loadCalls").addEventListener("click", loadCallList);
+    $("backfill").addEventListener("click", () => runData("runBackfill", "Backfilling all leads (this can take a while)…"));
+    $("sync").addEventListener("click", () => runData("runSync", "Syncing recent changes…"));
+  }
+
+  // Backfill and sync run here, in the page, because this is where
+  // NurtureCloud's session (cookies + captured bearer token) lives.
+  async function runData(type, startMsg) {
+    const $ = (id) => root.getElementById(id);
+    $("callStatus").textContent = startMsg;
+    const res = await chrome.runtime.sendMessage({ type, authHeaders: latestAuth });
+    if (!res?.ok) {
+      $("callStatus").textContent = res?.error || "That didn't work.";
+      return;
+    }
+    $("callStatus").textContent = type === "runBackfill"
+      ? `Backfill done: ${res.leads || 0} leads, ${res.messages || 0} messages.`
+      : "Sync complete.";
+  }
+
+  async function loadCallList() {
+    const $ = (id) => root.getElementById(id);
+    $("callStatus").textContent = "Scoring leads…";
+    const res = await chrome.runtime.sendMessage({ type: "callList" });
+    if (!res?.ok) {
+      $("callStatus").textContent = res?.error || "Couldn't build the call list.";
+      return;
+    }
+    const list = $("calls");
+    list.textContent = "";
+    if (!res.leads.length) {
+      $("callStatus").textContent = res.note || "No leads to call today.";
+      return;
+    }
+    for (const lead of res.leads) {
+      const row = document.createElement("div");
+      row.className = "call";
+      const pri = document.createElement("span");
+      pri.className = "pri";
+      pri.textContent = lead.priority;
+      const who = document.createElement("div");
+      who.className = "who";
+      const name = document.createElement("b");
+      name.textContent = lead.name;
+      const why = document.createElement("span");
+      why.className = "why";
+      why.textContent = (lead.reasons || [])[0] || "";
+      who.append(name, why);
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = lead.suggestedChannel;
+      row.append(pri, who, chip);
+      list.appendChild(row);
+    }
+    $("callStatus").textContent = `Top ${res.leads.length} of ${res.total} leads.`;
   }
 
   async function refresh(regenerate = false) {

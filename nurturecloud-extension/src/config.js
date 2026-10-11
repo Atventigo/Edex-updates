@@ -7,8 +7,17 @@ export const DEFAULTS = {
 
   // "off": nothing leaves the browser.
   // "discovery": record endpoint shapes only (paths, key names, types). No values.
-  // "capture": send full responses for matching URLs to the backend.
+  // "capture": passively ingest responses into the local store as the agent browses.
+  // "backfill": actively paginate all leads + history into the local store (one-time).
   mode: "discovery",
+
+  // The agent's name, woven into every SMS draft so the sender is identified.
+  agentName: "Jas",
+  // How many leads the daily call list shows.
+  callListLimit: 25,
+  // NurtureCloud fetch endpoints for backfill/sync. Filled from the discovery/HAR
+  // session; see src/data/endpoints.example.js for the shape and placeholders.
+  endpoints: null,
 
   // MAP: regexes (strings) of response URLs worth capturing. Empty = every JSON response.
   captureUrlPatterns: [],

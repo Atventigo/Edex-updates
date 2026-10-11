@@ -1,13 +1,15 @@
 import { DEFAULTS } from "./config.js";
 
 const LIST_FIELDS = ["captureUrlPatterns", "ignoreUrlPatterns", "smsBoxSelectors", "requiredSmsPhrases"];
-const TEXT_FIELDS = ["mode", "backendUrl", "backendKey", "contactUrlPattern"];
+const TEXT_FIELDS = ["mode", "agentName", "backendUrl", "backendKey", "contactUrlPattern"];
+const NUM_FIELDS = ["callListLimit"];
 const $ = (id) => document.getElementById(id);
 
 async function load() {
   const { config = {} } = await chrome.storage.local.get("config");
   const c = { ...DEFAULTS, ...config };
   for (const f of TEXT_FIELDS) $(f).value = c[f];
+  for (const f of NUM_FIELDS) $(f).value = c[f];
   for (const f of LIST_FIELDS) $(f).value = c[f].join("\n");
   showEndpoints();
 }
@@ -15,6 +17,7 @@ async function load() {
 async function save() {
   const config = {};
   for (const f of TEXT_FIELDS) config[f] = $(f).value.trim();
+  for (const f of NUM_FIELDS) config[f] = Number($(f).value) || DEFAULTS[f];
   for (const f of LIST_FIELDS) config[f] = $(f).value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (config.backendUrl) {
     const origin = new URL(config.backendUrl).origin + "/*";

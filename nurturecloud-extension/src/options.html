@@ -20,10 +20,15 @@
     <select id="mode">
       <option value="off">Off: nothing leaves the browser</option>
       <option value="discovery">Discovery: record endpoint structure only, no data</option>
-      <option value="capture">Capture: send NurtureCloud data to the backend and show suggestions</option>
+      <option value="capture">Capture: ingest data into the local store as you browse</option>
+      <option value="backfill">Backfill: actively pull all leads + history into the local store</option>
     </select>
   </label>
-  <label>Backend URL <span class="hint">n8n webhook base, e.g. https://n8n.example.com/webhook/nc</span>
+  <label>Agent name <span class="hint">woven into every SMS draft so the sender is identified</span>
+    <input id="agentName" type="text"></label>
+  <label>Daily call list size <span class="hint">how many leads the sidebar's call list shows</span>
+    <input id="callListLimit" type="number" min="1"></label>
+  <label>Backend URL <span class="hint">Modal endpoint base; only /draft and /vault-events are called. Leave blank to run without drafts.</span>
     <input id="backendUrl" type="url"></label>
   <label>Backend key <span class="hint">sent as X-Extension-Key</span>
     <input id="backendKey" type="password"></label>

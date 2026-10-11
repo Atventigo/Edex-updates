@@ -21,8 +21,18 @@
 
   const isJson = (contentType) => /json/i.test(contentType || "");
 
+  // Note the Authorization header NurtureCloud's own requests use, so the
+  // backfill can authenticate the same way. Never captures the cookie.
+  const noteAuth = (authorization) => {
+    if (authorization) window.postMessage({ tag: "fua-auth", authorization }, location.origin);
+  };
+
   const origFetch = window.fetch;
   window.fetch = async function (input, init) {
+    try {
+      const headers = new Headers((init && init.headers) || (input instanceof Request ? input.headers : undefined));
+      noteAuth(headers.get("authorization"));
+    } catch {}
     const response = await origFetch.apply(this, arguments);
     try {
       if (isJson(response.headers.get("content-type"))) {
@@ -37,6 +47,11 @@
   XMLHttpRequest.prototype.open = function (method, url) {
     this.__fua = { method: String(method).toUpperCase(), url: String(url) };
     return origOpen.apply(this, arguments);
+  };
+  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+    if (String(name).toLowerCase() === "authorization") noteAuth(value);
+    return origSetHeader.apply(this, arguments);
   };
   const origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function () {
