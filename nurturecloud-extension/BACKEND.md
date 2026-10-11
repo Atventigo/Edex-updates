@@ -1,70 +1,46 @@
-# Backend contract (n8n)
+# Backend contract
 
-The extension posts to a configurable base URL (the n8n webhook base) with an
-`X-Extension-Key` header. Three endpoints. All bodies are JSON.
+The backend is a thin, stateless Modal service in `../backend/`. It holds no
+lead data. The extension calls it for only two things, because each needs a
+secret key that must not live in the browser. Setup and deploy steps are in
+`../backend/README.md`.
 
-## `POST /capture`
+Both routes are `POST`, take and return JSON, and require the header
+`X-Extension-Key` (set on the extension's options page). The base URL is the
+Modal endpoint URL, also set on the options page. With no backend URL set, the
+extension still scores leads and builds the call list; it just shows no drafts
+or VaultRE reasons.
 
-Sent once per matching NurtureCloud JSON response, in capture mode.
+## `POST /draft`
 
-```json
-{
-  "source": "nurturecloud",
-  "capturedAt": "2026-10-11T04:00:00.000Z",
-  "endpoint": "GET app.nurturecloud.com/api/contacts/:id/notes?page",
-  "url": "https://app.nurturecloud.com/api/contacts/8f3a.../notes?page=1",
-  "status": 200,
-  "body": { }
-}
-```
-
-`endpoint` is the id-stripped template (good for grouping/storage keys); `body`
-is the raw response. The backend normalises contacts, messages and call logs
-into its database and merges them with VaultRE events. Respond `200` with an
-empty body.
-
-## `POST /suggest`
-
-Asked when the sidebar opens a contact, or when "New draft" is pressed.
-
-Request:
-
-```json
-{ "contactId": "8f3a...", "regenerate": false, "pageUrl": "https://app.nurturecloud.com/contacts/8f3a..." }
-```
-
-Response (all fields optional strings; the sidebar renders what it gets):
+Asks Claude to write one suggested SMS and a one-line call opener.
 
 ```json
 {
-  "contactName": "Sam",
-  "lastContacted": "SMS 12 days ago",
-  "nextAction": "Call — no answer to last 2 SMS",
-  "talkingPoint": "A 3-bed on their street sold last week above expectation",
-  "smsDraft": "Hi Sam, Jas from Ray White. ... Reply STOP to opt out.",
-  "reason": "No reply in 12 days and a comparable sale nearby"
+  "lead": { "firstName": "Sam", "suburb": "Paddington", "stage": "seller",
+            "lastContactSummary": "Last contacted 12/09/2026 by sms." },
+  "reason": "Seller lead, never contacted",
+  "context": { "agentName": "Jas", "suggestedChannel": "call" }
 }
 ```
 
-The LLM that writes `smsDraft` should already satisfy the Spam Act checks the
-extension runs (`src/sms.js`): name the sender and include an opt-out. The
-extension re-checks and shows warnings, but does not block.
+Returns `{ "sms": "...", "talkingPoint": "..." }`. The SMS is cleaned to one
+GSM segment (160 characters, no emoji), names the sender, and ends with
+"Reply STOP to opt out". The extension re-checks it before filling the box.
 
-## `POST /drafted`
+## `POST /vault-events`
 
-Fired when the agent clicks "Put in SMS box" (not when the SMS is actually
-sent — the real send is captured later from NurtureCloud's own history).
+Looks up recent VaultRE listings and sales near a contact.
 
 ```json
-{ "contactId": "8f3a...", "at": "2026-10-11T04:05:00.000Z" }
+{ "suburb": "Paddington", "street": "Latrobe Tce", "contactAddress": "12 Latrobe Tce" }
 ```
 
-Respond `200`. Use it to suppress re-suggesting the same contact for a while.
+Returns `{ "events": [{ "type": "listed" | "sold", "address": "...", "date": "...", "price": 0 }] }`.
+The extension caches results per suburb for 6 hours. On a VaultRE rate limit
+the backend returns an empty list rather than an error.
 
-## Notes for the n8n side
+## Developing without keys
 
-- VaultRE listing/sale events come in via the VaultRE REST API (see handoff),
-  not through this extension. Join them to contacts on phone/email.
-- Rate: capture fires per response, so debounce/batch writes downstream.
-- Auth is a shared key only. Put the webhook behind HTTPS and rotate the key if
-  it leaks; it is stored in the extension's local storage.
+`backend/mock.py` serves both routes with fake data. Point the extension's
+backend URL at it (`http://localhost:8787`) to exercise the sidebar end to end.

@@ -2,7 +2,7 @@ import { DEFAULTS } from "./config.js";
 import { shapeOf, mergeShapes, templatePath } from "./shape.js";
 import { checkDraft } from "./sms.js";
 import * as store from "./data/store.js";
-import { runBackfill } from "./data/backfill.js";
+import { runBackfill, isSet } from "./data/backfill.js";
 import { runDelta } from "./data/sync.js";
 import { scoreLead, rankLeads, dailyCallList } from "./scoring/score.js";
 
@@ -91,10 +91,12 @@ function authedFetchVia(tabId, authHeaders) {
   };
 }
 
+// Only the lead list is required. Everything else (pagination, nextPath vs
+// totalPath, messages, calls, updatedSinceParam) may stay as a TODO placeholder
+// and backfill skips it.
 async function requireEndpoints(config) {
   const ep = config.endpoints;
-  const hasTodo = JSON.stringify(ep || {}).includes("TODO");
-  if (!ep || hasTodo) throw new Error("NurtureCloud endpoints not configured yet. Fill them from the discovery/HAR session (extension options).");
+  if (!isSet(ep?.leads?.url)) throw new Error("NurtureCloud endpoints not configured yet (missing leads.url). Fill them from the discovery/HAR session in the extension options.");
   return ep;
 }
 

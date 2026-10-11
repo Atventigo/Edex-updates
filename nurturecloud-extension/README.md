@@ -1,72 +1,75 @@
 # Follow-up Assistant for NurtureCloud
 
-A Chrome (Manifest V3) extension that helps a Ray White agent follow up with
-leads inside NurtureCloud, which has no public API. It mirrors the decisions in
-`clients/Jas_RayWhite/HANDOFF.md`:
+A Chrome (Manifest V3) extension that tells a Ray White agent who to call
+today, who to leave alone, and what to text, using the leads already in
+NurtureCloud. NurtureCloud has no public API, so the extension works inside the
+agent's own logged-in session.
 
-- **Reads** the data NurtureCloud already loads, by wrapping `fetch`/`XHR` in
-  the page, while the agent works normally.
-- **Assists** with a sidebar on each contact: last contact, suggested next
-  action, a talking point and a draft SMS. It fills NurtureCloud's own SMS box.
-  **The agent presses send.** Nothing is sent automatically.
+SMS goes out from NurtureCloud itself, from the number the lead already knows,
+and the history stays in NurtureCloud. The extension writes the draft and
+puts it in NurtureCloud's SMS box; the agent presses Send. GoHighLevel is a
+fallback only if NurtureCloud turns out to block this.
 
-It does not log in, store a password, or scrape in the background. It only sees
-what the agent's own session loads.
+How the pieces fit is in `ARCHITECTURE.md`. The backend routes are in
+`BACKEND.md`.
 
-## The three modes
+## What the agent sees
 
-Set on the options page. Start at the top and only move down with Jas's OK.
+A sidebar on NurtureCloud:
 
-| Mode | What leaves the browser | Use |
-|---|---|---|
-| **off** | Nothing. | Default / paused. |
-| **discovery** | Nothing. Records endpoint *structure* only (paths with ids stripped, key names and types) in local storage. | The mapping step in the handoff. Export the JSON and paste it into `nurturecloud_endpoints.md`. No names, numbers or message text are ever recorded — see `src/shape.js` and its tests. |
-| **capture** | Full matching JSON responses are sent to the backend, and the sidebar shows suggestions. | Only after Jas agrees in writing, per the handoff. |
+- **Today's calls**: every synced lead scored and ranked, top N shown with
+  priority, the main reason, and whether to call or text.
+- **On a contact**: last contact, next action, a talking point for the call,
+  and an SMS draft with compliance warnings. "Put in SMS box" fills
+  NurtureCloud's own box.
+- **Backfill all / Sync now**: pull every lead and its history into the
+  extension, or just what changed since the last sync.
 
-## Install (unpacked, for development)
+## Modes
 
-1. `chrome://extensions` → enable Developer mode → **Load unpacked** → pick this
-   folder.
-2. Open the extension's **options** and set the mode. For capture mode also set
-   the backend URL and key.
+Set on the options page. Move down the list only with Jas's OK.
+
+| Mode | What it does |
+|---|---|
+| **off** | Nothing. |
+| **discovery** | Records endpoint structure only (paths with ids stripped, key names and types). No values, nothing uploaded. Used to map NurtureCloud. |
+| **capture** | Same recording while the agent browses; data reaches the local store through backfill/sync. |
+| **backfill** | Enables pulling all leads + history into the local store. |
+
+Lead data stays in the browser (IndexedDB). The backend only sees what it needs
+to draft one message, plus a suburb and street for VaultRE lookups.
+
+## Install (unpacked)
+
+1. `chrome://extensions` → Developer mode → **Load unpacked** → this folder.
+2. Options: set the mode, agent name, and (optionally) the backend URL and key.
 3. Reload any open NurtureCloud tab.
 
-## Mapping NurtureCloud (discovery mode)
+## Mapping NurtureCloud
+
+Backfill and sync can't run until NurtureCloud's real endpoints are known.
 
 1. Options → mode **discovery** → Save.
-2. In NurtureCloud, visit the screens from the handoff's "Next step": lead list
-   (scroll/filter), a few contacts incl. one with SMS and one with call
-   history, call lists, and the SMS compose screen (**don't send**).
-3. Back on the options page → **Refresh**, then **Download JSON**.
-4. Paste the structure into `clients/Jas_RayWhite/nurturecloud_endpoints.md`.
-   It holds no personal data by construction, so it is safe to commit — unlike a
-   HAR export, which is not.
+2. In NurtureCloud, open the lead list (scroll, filter), two or three contacts
+   including one with SMS history and one with call history, call lists, and
+   the SMS compose screen. Don't send anything.
+3. Options → **Refresh** → **Download JSON**. That file holds structure only.
+4. From it (or from a HAR export), fill the **NurtureCloud endpoints** JSON on
+   the options page. Only `leads.url` is required; the rest is skipped while
+   it says TODO.
 
-The options page also lets you set `captureUrlPatterns`, `contactUrlPattern`
-(how the contact id appears in the page URL) and `smsBoxSelectors` once mapping
-shows NurtureCloud's real paths and markup — nothing here is hard-coded to
-guessed endpoints.
-
-## Backend
-
-The extension is deliberately thin. Merging VaultRE listing/sale events,
-deciding who to contact next, and writing drafts with an LLM all live in the
-n8n backend. The HTTP contract the extension expects is in `BACKEND.md`.
+A HAR export contains personal data and live session tokens. Keep it in
+`.tmp/`, never commit it, and delete it after mapping.
 
 ## Tests
 
-`npm test` (Node's built-in runner) covers the two pure modules: `shape.js`
-(proves discovery mode cannot leak values) and `sms.js` (Spam Act checks and
-segment counting). The Chrome-dependent scripts are integration-tested by hand
-in the browser.
+`npm test` runs the unit tests (sms checks, structure-only shapes, scoring,
+data layer). The backend's tests: `python3 ../backend/tests/test_core.py`.
 
-## Privacy & safety
+## Safety
 
-- Discovery records structure only; capture is off until explicitly enabled.
-- HAR files and captured data contain personal data and live sessions — keep
-  them in `.tmp/`, never commit them (see handoff rules).
-- Every outbound destination (backend origin) is an optional host permission
-  the user grants on the options page, not a blanket content-script grant.
-- SMS stays manual: the extension fills the box; the agent reviews and sends.
-  Compliance with Australia's Spam Act 2003 (sender identified, opt-out
-  present) is checked on the draft but remains the agent's responsibility.
+- The agent sends every SMS. Nothing is sent automatically.
+- Drafts are checked for the Spam Act basics (sender named, opt-out present)
+  and kept to one SMS segment.
+- Backfill is throttled to about one request a second and backs off on rate
+  limits, because the account at risk is the agent's.
